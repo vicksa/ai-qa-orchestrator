@@ -1,97 +1,100 @@
 # ai-qa-orchestrator
 
-An AI agent that turns a plain-language test scenario into a real browser test run — plans
-the steps, drives Playwright through tool calls, **self-heals selectors that break**, and
-reports the whole run (including what it healed and why) through a FastAPI dashboard.
+Um agente de IA que transforma um cenário de teste escrito em linguagem natural em uma
+execução real num navegador — planeja os passos, controla o Playwright através de tool calls,
+**se auto-corrige quando um seletor quebra** e reporta a execução inteira (incluindo o que foi
+corrigido e por quê) num dashboard em FastAPI.
 
-## Why this matters
+## Por que isso importa
 
-Browser test suites rot the moment a `data-testid` gets renamed or a button moves inside a
-new wrapper `<div>`. Traditional E2E suites fail hard on that kind of change even though the
-underlying user flow still works — someone has to notice the red build, open the diff, and
-manually update a selector. This project treats that as something an agent can do inline: when
-a step's selector doesn't resolve, the agent takes a fresh DOM snapshot, asks the model for a
-replacement selector grounded in the actual page, retries once, and — if that works — logs the
-healing event instead of failing the run. You get a test suite that survives incidental UI
-churn, with a full audit trail of every time it had to adapt.
+Suítes de teste E2E apodrecem no momento em que um `data-testid` é renomeado ou um botão muda
+de lugar dentro de uma nova `<div>`. Suítes tradicionais quebram nesse tipo de mudança mesmo
+quando o fluxo de usuário continua funcionando perfeitamente — alguém precisa notar o build
+vermelho, abrir o diff e atualizar o seletor manualmente. Este projeto trata isso como algo que
+um agente pode resolver em tempo real: quando o seletor de um passo não resolve, o agente tira
+um novo snapshot do DOM, pede ao modelo um seletor substituto baseado na página real, tenta de
+novo uma vez e — se funcionar — registra o evento de correção em vez de derrubar a execução.
+O resultado é uma suíte de testes que sobrevive a mudanças incidentais de UI, com um histórico
+completo de cada vez que precisou se adaptar.
 
-It's also a small, complete example of an agentic system built directly on the Claude API
-(not a framework): a manual tool-use loop, a constrained structured-output call for the
-healing step, an async execution layer (FastAPI + Celery + Redis) so slow browser runs don't
-block the API, and a persistence layer that turns each run into a reviewable report.
+Também é um exemplo pequeno e completo de um sistema agente construído diretamente sobre a
+API da Claude (sem framework): um loop manual de tool-use, uma chamada de structured output
+restrita para o passo de correção, uma camada de execução assíncrona (FastAPI + Celery + Redis)
+para que execuções lentas de navegador não travem a API, e uma camada de persistência que
+transforma cada execução em um relatório revisável.
 
-## Architecture
+## Arquitetura
 
 ```
                     ┌─────────────────────────┐
    POST /runs  ───▶ │   FastAPI (aiqa.api)     │ ───▶ Postgres/SQLite
                     │   dashboard + REST API   │        (runs, steps,
                     └───────────┬─────────────┘         healing events)
-                                │ enqueues
+                                │ enfileira
                                 ▼
                     ┌─────────────────────────┐
                     │  Celery worker + Redis   │
                     │  aiqa.worker.tasks       │
                     └───────────┬─────────────┘
-                                │ drives
+                                │ conduz
                                 ▼
                     ┌─────────────────────────┐        ┌───────────────────┐
                     │  Agent orchestrator      │ ─────▶ │  Claude (Opus 5)   │
-                    │  aiqa.agent.orchestrator │ ◀───── │  tool-use loop     │
+                    │  aiqa.agent.orchestrator │ ◀───── │  loop de tool-use  │
                     └───────────┬─────────────┘        └───────────────────┘
                                 │ tool calls (navigate/click/fill/assert/get_dom)
                                 ▼
                     ┌─────────────────────────┐
                     │  Playwright (Chromium)   │
                     └─────────────────────────┘
-                                │ on a broken selector
+                                │ ao encontrar um seletor quebrado
                                 ▼
                     ┌─────────────────────────┐        ┌───────────────────┐
-                    │  Self-healing            │ ─────▶ │  Claude (structured │
-                    │  aiqa.agent.healing      │ ◀───── │  output: new       │
-                    │                          │        │  selector + why)    │
+                    │  Self-healing             │ ─────▶ │  Claude (output    │
+                    │  aiqa.agent.healing       │ ◀───── │  estruturado: novo │
+                    │                           │        │  seletor + porquê) │
                     └─────────────────────────┘        └───────────────────┘
 ```
 
-**Why an agent instead of a fixed script generator:** a codegen approach (turn NL into a
-Playwright script once, run the script forever) has no path to recovering from a page that
-changed under it. Running the model live during execution — with tools instead of generated
-code — means the same agent that planned the flow can re-plan the one step that broke,
-without re-deriving the whole test.
+**Por que um agente em vez de um gerador de script fixo:** uma abordagem de codegen (transformar
+linguagem natural num script Playwright uma vez e rodar esse script para sempre) não tem
+caminho de recuperação quando a página muda por baixo dele. Rodar o modelo ao vivo durante a
+execução — com tools em vez de código gerado — significa que o mesmo agente que planejou o
+fluxo pode replanejar só o passo que quebrou, sem precisar reconstruir o teste inteiro.
 
-## Install
+## Instalação
 
 ```bash
 pip install -e ".[dev]"
 playwright install --with-deps chromium
-cp .env.example .env   # then set ANTHROPIC_API_KEY
+cp .env.example .env   # depois defina ANTHROPIC_API_KEY
 ```
 
-## Run locally
+## Rodando localmente
 
-Everything needed to execute a run: Redis (broker), the Celery worker, and the API.
+Tudo que é necessário para executar uma run: Redis (broker), o worker do Celery e a API.
 
 ```bash
-docker compose up -d redis postgres   # or point DATABASE_URL at your own Postgres/SQLite
+docker compose up -d redis postgres   # ou aponte DATABASE_URL para seu próprio Postgres/SQLite
 celery -A aiqa.worker.celery_app worker --loglevel=info &
 uvicorn aiqa.api.main:app --reload
 ```
 
-Then open `http://localhost:8000` for the dashboard, or submit a run directly:
+Depois abra `http://localhost:8000` para o dashboard, ou envie uma execução diretamente:
 
 ```bash
 curl -X POST http://localhost:8000/runs \
   -H "Content-Type: application/json" \
   -d '{
-        "scenario": "Go to the login page, sign in with the demo account, and confirm the dashboard greeting shows the user'\''s name.",
+        "scenario": "Vá até a página de login, entre com a conta demo e confirme que a saudação do dashboard mostra o nome do usuário.",
         "target_url": "https://example.com/login"
       }'
 ```
 
-`GET /runs/{id}` returns the run's JSON status; `GET /runs/{id}/report` renders it as an
-HTML report with every step and any self-healing events.
+`GET /runs/{id}` retorna o status da execução em JSON; `GET /runs/{id}/report` renderiza um
+relatório em HTML com cada passo e qualquer evento de self-healing.
 
-See `examples/login_scenario.md` for a longer sample scenario.
+Veja `examples/login_scenario.md` para um exemplo de cenário mais completo.
 
 ## Docker
 
@@ -99,30 +102,30 @@ See `examples/login_scenario.md` for a longer sample scenario.
 docker compose up --build
 ```
 
-Brings up Postgres, Redis, the FastAPI app, and a Celery worker together. See
-`docker-compose.yml` for service wiring and `.env.example` for the variables each one reads.
+Sobe Postgres, Redis, a aplicação FastAPI e um worker do Celery juntos. Veja `docker-compose.yml`
+para a ligação entre os serviços e `.env.example` para as variáveis que cada um lê.
 
-## Tests
+## Testes
 
 ```bash
 pytest
 ruff check .
 ```
 
-Tests mock the LLM and the Playwright `Page` — no live browser, network access, or API key is
-needed to run the suite.
+Os testes mockam o LLM e a `Page` do Playwright — não é preciso navegador real, acesso à rede
+nem API key para rodar a suíte.
 
-## Project layout
+## Estrutura do projeto
 
 ```
 src/aiqa/
-  agent/         tool schemas, the Anthropic tool-use loop, self-healing
-  api/           FastAPI app, routers, Jinja2 dashboard/report templates
-  worker/        Celery task that runs a scenario and persists the result
-  models.py      SQLModel tables (TestRun, TestStep, HealingEvent)
-tests/           pytest suite (tools, healing, orchestrator, API, worker)
+  agent/         schemas das tools, loop de tool-use com a Anthropic, self-healing
+  api/           app FastAPI, routers, templates Jinja2 do dashboard/relatório
+  worker/        task do Celery que roda um cenário e persiste o resultado
+  models.py      tabelas SQLModel (TestRun, TestStep, HealingEvent)
+tests/           suíte pytest (tools, healing, orchestrator, API, worker)
 ```
 
-## License
+## Licença
 
-MIT — see [LICENSE](./LICENSE).
+MIT — veja [LICENSE](./LICENSE).

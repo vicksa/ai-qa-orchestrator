@@ -1,16 +1,16 @@
-# Example scenario
+# Exemplo de cenário
 
-A scenario is just plain language — the agent plans out the actual tool calls
-(`navigate`, `click`, `fill`, `assert_text`, `get_dom`) itself.
+Um cenário é só linguagem natural — o próprio agente planeja as tool calls
+(`navigate`, `click`, `fill`, `assert_text`, `get_dom`).
 
 ```json
 {
   "target_url": "https://example.com/login",
-  "scenario": "Go to the login page. Fill in the email field with 'demo@example.com' and the password field with 'demo-password-123'. Click the Log In button. Once the page loads, confirm the dashboard heading contains the word 'Welcome'."
+  "scenario": "Vá até a página de login. Preencha o campo de e-mail com 'demo@example.com' e o campo de senha com 'demo-password-123'. Clique no botão de Entrar. Depois que a página carregar, confirme que o título do dashboard contém a palavra 'Bem-vindo'."
 }
 ```
 
-Submit it:
+Enviando:
 
 ```bash
 curl -X POST http://localhost:8000/runs \
@@ -18,33 +18,34 @@ curl -X POST http://localhost:8000/runs \
   -d @- <<'JSON'
 {
   "target_url": "https://example.com/login",
-  "scenario": "Go to the login page. Fill in the email field with 'demo@example.com' and the password field with 'demo-password-123'. Click the Log In button. Once the page loads, confirm the dashboard heading contains the word 'Welcome'."
+  "scenario": "Vá até a página de login. Preencha o campo de e-mail com 'demo@example.com' e o campo de senha com 'demo-password-123'. Clique no botão de Entrar. Depois que a página carregar, confirme que o título do dashboard contém a palavra 'Bem-vindo'."
 }
 JSON
 ```
 
-The response carries the run's `id`. Track it with:
+A resposta traz o `id` da execução. Acompanhe com:
 
 ```bash
 curl http://localhost:8000/runs/<id>
 ```
 
-Or open `http://localhost:8000/runs/<id>/report` for the human-readable report,
-including any selectors the agent had to self-heal along the way.
+Ou abra `http://localhost:8000/runs/<id>/report` para o relatório legível, incluindo
+qualquer seletor que o agente precisou corrigir sozinho pelo caminho.
 
-## What "self-healing" looks like in practice
+## Como o "self-healing" funciona na prática
 
-If the login form's submit button is renamed from `#login-btn` to
-`data-testid="submit-login"` between when the scenario was written and when it
-runs, a naive selector-based test breaks. This agent instead:
+Se o botão de submit do formulário de login for renomeado de `#login-btn` para
+`data-testid="submit-login"` entre o momento em que o cenário foi escrito e o
+momento em que ele roda, um teste ingênuo baseado em seletor quebra. Este agente,
+em vez disso:
 
-1. Tries `#login-btn`, gets a locator timeout.
-2. Takes a fresh DOM snapshot of the page as it exists right now.
-3. Asks the model for a new selector, given the element's plain-language
-   description ("the Log In button") and the live HTML.
-4. Retries the click with the new selector.
-5. Logs the substitution as a `HealingEvent` — visible on the report page —
-   instead of silently failing the run.
+1. Tenta `#login-btn`, recebe um timeout de localização.
+2. Tira um snapshot novo do DOM da página como ela está agora.
+3. Pede ao modelo um novo seletor, dado a descrição do elemento em linguagem
+   natural ("o botão de Entrar") e o HTML ao vivo.
+4. Tenta o clique de novo com o novo seletor.
+5. Registra a substituição como um `HealingEvent` — visível na página de
+   relatório — em vez de falhar a execução silenciosamente.
 
-If the healed selector also fails, the step is reported as a normal failure;
-healing gets exactly one retry, not an unbounded loop.
+Se o seletor corrigido também falhar, o passo é reportado como uma falha normal;
+a correção tem exatamente uma tentativa, não um loop sem limite.
