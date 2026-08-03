@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="kpi-row">
+  <div class="stat-tile">
+    <div class="label">Pass rate</div>
+    {% if pass_rate is not none %}
+      <div class="value">{{ pass_rate }}%</div>
+    {% else %}
+      <div class="value empty">No finished runs yet</div>
+    {% endif %}
+  </div>
+  <div class="stat-tile">
+    <div class="label">Total runs</div>
+    <div class="value">{{ total }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="label">Self-heals</div>
+    <div class="value">{{ total_heals }}</div>
+  </div>
+  <div class="stat-tile">
+    <div class="label">Avg duration</div>
+    {% if avg_duration is not none %}
+      <div class="value">{{ avg_duration }}s</div>
+    {% else %}
+      <div class="value empty">—</div>
+    {% endif %}
+  </div>
+</div>
+
+<h2>Recent runs</h2>
+{% if runs %}
+<table>
+  <thead>
+    <tr>
+      <th>Status</th>
+      <th>Scenario</th>
+      <th>Target</th>
+      <th>Created</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for run in runs %}
+    <tr>
+      <td><span class="badge {{ run.status.value }}">{{ run.status.value }}</span></td>
+      <td>{{ run.scenario[:80] }}{% if run.scenario|length > 80 %}…{% endif %}</td>
+      <td class="mono">{{ run.target_url }}</td>
+      <td class="mono">{{ run.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      <td><a href="/runs/{{ run.id }}/report">View report →</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state">No test runs yet. Submit one via <code>POST /runs</code>.</div>
+{% endif %}
+
+{% endblock %}

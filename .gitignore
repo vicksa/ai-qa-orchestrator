@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets — never commit real credentials
+.env
+!.env.example
+
+# Local databases and artifacts
+*.db
+*.sqlite3
+screenshots/
+reports/
+
+# Editor/OS
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Run {{ run.id[:8] }} · AI QA Orchestrator{% endblock %}
+{% block content %}
+
+<p><a href="/">← All runs</a></p>
+
+<div class="meta-row">
+  <div>
+    <div class="k">Status</div>
+    <span class="badge {{ run.status.value }}">{{ run.status.value }}</span>
+  </div>
+  <div>
+    <div class="k">Target URL</div>
+    <div class="mono">{{ run.target_url }}</div>
+  </div>
+  <div>
+    <div class="k">Created</div>
+    <div class="mono">{{ run.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</div>
+  </div>
+  {% if run.finished_at %}
+  <div>
+    <div class="k">Duration</div>
+    <div class="mono">{{ ((run.finished_at - run.created_at).total_seconds()) | round(1) }}s</div>
+  </div>
+  {% endif %}
+</div>
+
+<h2>Scenario</h2>
+<p>{{ run.scenario }}</p>
+
+{% if run.summary %}
+<h2>Summary</h2>
+<p>{{ run.summary }}</p>
+{% endif %}
+
+<h2>Steps</h2>
+{% if run.steps %}
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Tool</th>
+      <th>Input</th>
+      <th>Result</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for step in run.steps %}
+    <tr class="step-row {% if step.is_error %}is-error{% endif %}">
+      <td class="mono">{{ step.index }}</td>
+      <td class="mono">{{ step.tool_name }}</td>
+      <td class="mono">{{ step.tool_input }}</td>
+      <td>{{ step.result }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty-state">No steps recorded yet — the run may still be queued.</div>
+{% endif %}
+
+{% if run.healing_events %}
+<h2>Self-healing events</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Step #</th>
+      <th>Original selector</th>
+      <th>Healed selector</th>
+      <th>Reasoning</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for heal in run.healing_events %}
+    <tr>
+      <td class="mono">{{ heal.index }}</td>
+      <td class="mono">{{ heal.original_selector }}</td>
+      <td class="mono heal-note">{{ heal.healed_selector }}</td>
+      <td>{{ heal.reasoning }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% endblock %}
